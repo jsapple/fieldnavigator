@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1110">
+  <meta name="description" content="Offline in-cab swath Guidance. Lightbar, coverage map, and audible drift tones.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Field Nav">
+  <title>Field Nav</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="splash">
+    <div class="splash-card">
+      <div class="splash-brand">
+        <img class="splash-icon" src="icons/icon-192.png" width="72" height="72" alt="Field Nav icon">
+        <h1>Field Nav</h1>
+      </div>
+      <p class="lede">In-cab swath Guidance for sprayers, spreaders, and mowers. Mark a row, set the boom, and stay off the last pass.</p>
+      <div class="mini-bar" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span class="on"></span><span class="on"></span><span class="on"></span>
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <ul class="points">
+        <li>Lightbar, parallel passes, and a painted coverage map</li>
+        <li>Phone GPS, compass, gyro, and motion used together. Works without cell coverage</li>
+        <li>Optional beeps so you can watch the boom, not the phone</li>
+      </ul>
+      <button id="startBtn" class="btn primary" type="button">Start Guidance</button>
+      <button id="installBtn" class="btn" type="button" hidden>Install Field Nav</button>
+      <p id="installHint" class="hint">On iPhone, open this page in Safari. Tap Share, then Add to Home Screen. When you start Guidance, allow Location and Motion &amp; Orientation.</p>
+      <button id="demoBtn" class="btn" type="button">Preview a field</button>
+    </div>
+  </div>
+
+  <div id="cab" class="app" hidden>
+    <header class="top">
+      <div class="brand">
+        <img src="icons/favicon-32.png" width="32" height="32" alt="">
+        <div>
+          <p class="brand-name">Field Nav</p>
+          <p class="brand-sub">Swath Guidance</p>
+        </div>
+      </div>
+      <div class="boom-read">
+        <span class="boom-label">boom</span>
+        <b id="boomChip">20 ft</b>
+      </div>
+      <div class="top-tools">
+        <p id="gpsPill" class="pill">GPS</p>
+        <button id="gearBtn" class="icon-btn" type="button" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.2 3.5-1.7-.3a6.8 6.8 0 0 0-.5-1.3l1-1.4-1.4-1.4-1.4 1a6.8 6.8 0 0 0-1.3-.5L14.6 6h-2l-.3 1.7a6.8 6.8 0 0 0-1.3.5l-1.4-1-1.4 1.4 1 1.4a6.8 6.8 0 0 0-.5 1.3L6 12v2l1.7.3c.1.4.3.9.5 1.3l-1 1.4 1.4 1.4 1.4-1c.4.2.8.4 1.3.5l.3 1.7h2l.3-1.7c.4-.1.9-.3 1.3-.5l1.4 1 1.4-1.4-1-1.4c.2-.4.4-.8.5-1.3l1.7-.3v-2Z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="side">
+      <section class="cluster">
+        <p class="steer-kicker" id="steerKicker">Guidance</p>
+        <p class="steer-dir" id="steerDir" aria-live="polite">WAITING</p>
+        <div class="meta">
+          <span id="speedRead">—</span>
+          <span id="headRead">—</span>
+          <span id="sourceRead">No heading</span>
+        </div>
+      </section>
+      <div class="lightbar" id="lightbar" aria-hidden="true"></div>
+      <p class="status-line" id="statusLine">Mark A at the start of a row</p>
+      <footer class="dock">
+        <button id="markA" class="dock-btn" type="button">Mark A</button>
+        <button id="markB" class="dock-btn" type="button">Mark B</button>
+        <button id="applyBtn" class="dock-btn" type="button" aria-pressed="false">Apply</button>
+        <button id="contourBtn" class="dock-btn" type="button" aria-pressed="false">Mark Contour</button>
+        <div class="dock-pass">
+          <button id="dockPassMinus" class="dock-btn dock-step" type="button" aria-label="Previous pass">−</button>
+          <button id="dockPassAuto" class="dock-btn dock-pass-auto" type="button" aria-pressed="true">
+            <span id="dockPassMode">Auto</span>
+          </button>
+          <button id="dockPassPlus" class="dock-btn dock-step" type="button" aria-label="Next pass">+</button>
+        </div>
+      </footer>
+    </div>
+
+    <main class="mapwrap">
+      <canvas id="map"></canvas>
+      <div class="map-stats">
+        <p class="stat-chip" id="passChip">0 passes</p>
+        <p class="stat-chip" id="acreChip">0.0 ac</p>
+      </div>
+      <div class="compass" aria-hidden="true">
+        <span class="lubber"></span>
+        <div id="rose">
+          <svg viewBox="0 0 100 100">
+            <g fill="none" stroke-linecap="round">
+              <line class="minor" x1="61.4" y1="7.5" x2="60.4" y2="11.4"/>
+              <line class="minor" x1="72" y1="11.9" x2="70" y2="15.4"/>
+              <line class="mid" x1="81.1" y1="18.9" x2="75.5" y2="24.5"/>
+              <line class="minor" x1="88.1" y1="28" x2="84.6" y2="30"/>
+              <line class="minor" x1="92.5" y1="38.6" x2="88.6" y2="39.6"/>
+              <line class="minor" x1="92.5" y1="61.4" x2="88.6" y2="60.4"/>
+              <line class="minor" x1="88.1" y1="72" x2="84.6" y2="70"/>
+              <line class="mid" x1="81.1" y1="81.1" x2="75.5" y2="75.5"/>
+              <line class="minor" x1="72" y1="88.1" x2="70" y2="84.6"/>
+              <line class="minor" x1="61.4" y1="92.5" x2="60.4" y2="88.6"/>
+              <line class="minor" x1="38.6" y1="92.5" x2="39.6" y2="88.6"/>
+              <line class="minor" x1="28" y1="88.1" x2="30" y2="84.6"/>
+              <line class="mid" x1="18.9" y1="81.1" x2="24.5" y2="75.5"/>
+              <line class="minor" x1="11.9" y1="72" x2="15.4" y2="70"/>
+              <line class="minor" x1="7.5" y1="61.4" x2="11.4" y2="60.4"/>
+              <line class="minor" x1="7.5" y1="38.6" x2="11.4" y2="39.6"/>
+              <line class="minor" x1="11.9" y1="28" x2="15.4" y2="30"/>
+              <line class="mid" x1="18.9" y1="18.9" x2="24.5" y2="24.5"/>
+              <line class="minor" x1="28" y1="11.9" x2="30" y2="15.4"/>
+              <line class="minor" x1="38.6" y1="7.5" x2="39.6" y2="11.4"/>
+            </g>
+            <circle cx="50" cy="50" r="2.4" fill="#d6ff4a"/>
+            <text class="n" x="50" y="11">N</text>
+            <text x="89" y="50">E</text>
+            <text x="50" y="91">S</text>
+            <text x="11" y="50">W</text>
+          </svg>
+        </div>
+      </div>
+      <div class="zoom">
+        <button id="zoomIn" type="button" aria-label="Zoom in">+</button>
+        <button id="zoomOut" type="button" aria-label="Zoom out">−</button>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="sheet" aria-label="Field Nav settings">
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <h2>Settings</h2>
+        <button id="closeSheet" class="icon-btn" type="button" aria-label="Close settings">✕</button>
+      </div>
+
+      <section class="sheet-actions">
+        <button id="clearLine" class="btn" type="button">Clear A-B line</button>
+        <button id="clearContour" class="btn" type="button">Clear contour line</button>
+        <button id="newField" class="btn danger" type="button">New field</button>
+      </section>
+
+      <section>
+        <h3>Boom width</h3>
+        <div class="stepper">
+          <button id="widthMinus" type="button" aria-label="Narrower boom">−</button>
+          <label class="width-edit">
+            <span class="width-pair">
+              <input id="widthInput" inputmode="decimal" aria-label="Boom width in feet">
+              <span id="widthUnit">ft</span>
+            </span>
+          </label>
+          <button id="widthPlus" type="button" aria-label="Wider boom">+</button>
+        </div>
+      </section>
+
+      <section>
+        <h3>Beep volume <span id="volumeRead"></span></h3>
+        <input id="volume" type="range" min="0" max="100" step="1">
+        <p class="fine">Left of the pass is a lower tone in the left ear. Right is a higher tone. Beeps speed up as you drift, and stay quiet on the line. Zero is silent.</p>
+      </section>
+
+      <section>
+        <h3>Phone mount</h3>
+        <p class="fine">Which way top of phone points in cab</p>
+        <div class="seg mount">
+          <button type="button" data-mount="270">Left</button>
+          <button type="button" data-mount="0">Hood</button>
+          <button type="button" data-mount="90">Right</button>
+        </div>
+      </section>
+
+      <section>
+        <h3>On-line window <span id="deadbandRead"></span></h3>
+        <input id="deadband" type="range" min="1" max="20" step="1" value="10">
+      </section>
+
+      <section>
+        <h3>Field totals</h3>
+        <label class="check">
+          <input id="tallyToggle" type="checkbox" checked>
+          <span>Count passes and acres</span>
+        </label>
+        <p class="fine">Passes are swaths that received product. Acres are boom width times the distance you applied, so a second trip over the same ground counts again.</p>
+      </section>
+
+      <section>
+        <h3>This device</h3>
+        <ul class="sensors" id="sensorList"></ul>
+        <p id="wakeState" class="fine"></p>
+        <p class="fine">GPS, compass, and motion pause when you leave Field Nav so the phone can sleep. Mount the phone off a steel dash if the heading wanders while you sit still.</p>
+      </section>
+
+      <section class="sheet-actions">
+        <button id="backBtn" class="btn" type="button">Back to start</button>
+      </section>
+      <p class="fine about">Guidance math stays on this device. Nothing is uploaded.</p>
+    </div>
+  </dialog>
+
+  <p id="toast" class="toast" hidden></p>
+  <dialog id="confirm" class="confirm">
+    <p id="confirmText"></p>
+    <div class="confirm-actions">
+      <button id="confirmNo" class="btn" type="button">Cancel</button>
+      <button id="confirmYes" class="btn danger" type="button">Confirm</button>
+    </div>
+  </dialog>
+  <script src="app.js"></script>
+</body>
+</html>
