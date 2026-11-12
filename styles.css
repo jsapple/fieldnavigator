@@ -7,6 +7,11 @@
   --muted: #a8b5a6;
   --lime: #d6ff4a;
   --lime-ink: #14210a;
+  --leaf: #8fb56e;
+  --leaf-ink: #14210a;
+  --paper: #f4f7f1;
+  --paper-ink: #14210a;
+  --north: #e23b32;
   --left: #7cbcff;
   --right: #ff8a55;
   --safe-top: env(safe-area-inset-top);
@@ -30,7 +35,7 @@ button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 
 :focus-visible {
-  outline: 2px solid var(--lime);
+  outline: 2px solid var(--paper);
   outline-offset: 2px;
 }
 
@@ -56,8 +61,6 @@ button { cursor: pointer; }
   align-items: flex-start;
   gap: 10px;
 }
-
-#demoBtn { margin-top: auto; }
 
 .splash-brand {
   display: flex;
@@ -130,9 +133,9 @@ h1 {
 .btn { width: 100%; }
 
 .btn.primary {
-  background: var(--lime);
-  color: var(--lime-ink);
-  border-color: var(--lime);
+  background: var(--leaf);
+  color: var(--leaf-ink);
+  border-color: var(--leaf);
 }
 
 .btn.danger { color: #ffb2a0; }
@@ -145,12 +148,11 @@ h1 {
   height: 100%;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   grid-template-areas:
     "top"
     "cluster"
     "lightbar"
-    "status"
     "map"
     "dock";
   background: var(--bg);
@@ -192,23 +194,8 @@ h1 {
   font-weight: 700;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
-  color: var(--lime);
+  color: var(--paper);
 }
-
-.brand { display: flex; align-items: center; gap: 10px; }
-
-.brand img { border-radius: 7px; }
-
-.brand-name, .brand-sub { margin: 0; }
-
-.brand-name {
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-size: 0.95rem;
-}
-
-.brand-sub { color: var(--muted); font-size: 0.78rem; }
 
 .top-tools {
   display: flex;
@@ -234,7 +221,7 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
-.pill.ok { background: #1a2614; color: var(--lime); }
+.pill.ok { background: #1c221c; color: var(--paper); }
 .pill.fair { background: #2a2412; color: #f0d060; }
 .pill.poor { background: #2a1612; color: #ff8d78; }
 
@@ -247,6 +234,12 @@ h1 {
 }
 
 .icon-btn svg { width: 22px; height: 22px; fill: var(--ink); }
+
+#gearBtn svg {
+  width: 26px;
+  height: 26px;
+  fill: #8e8e93;
+}
 
 .cluster {
   grid-area: cluster;
@@ -275,10 +268,9 @@ h1 {
   font-size: clamp(1.45rem, 6.4vw, 2rem);
 }
 
-body[data-steer="on"] .steer-dir { color: var(--lime); }
+body[data-steer="on"] .steer-dir { color: var(--paper); }
 body[data-steer="left"] .steer-dir { color: var(--left); }
 body[data-steer="right"] .steer-dir { color: var(--right); }
-body[data-steer="on"] .cluster { box-shadow: inset 0 -3px 0 var(--lime); }
 body[data-steer="left"] .cluster { box-shadow: inset 4px 0 0 var(--left); }
 body[data-steer="right"] .cluster { box-shadow: inset -4px 0 0 var(--right); }
 
@@ -322,18 +314,6 @@ body[data-steer="right"] .cluster { box-shadow: inset -4px 0 0 var(--right); }
   50% { filter: brightness(0.45); }
 }
 
-.status-line {
-  grid-area: status;
-  margin: 0;
-  padding: 6px 12px;
-  color: var(--muted);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background: #121612;
-}
-
 .mapwrap {
   grid-area: map;
   position: relative;
@@ -346,8 +326,9 @@ canvas { width: 100%; height: 100%; display: block; }
 
 .map-stats {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -366,24 +347,10 @@ canvas { width: 100%; height: 100%; display: block; }
 }
 
 .compass {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+  position: relative;
+  justify-self: start;
   width: 76px;
   height: 76px;
-}
-
-.lubber {
-  position: absolute;
-  z-index: 2;
-  left: 50%;
-  top: 0;
-  width: 0;
-  height: 0;
-  margin-left: -5px;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 8px solid var(--lime);
 }
 
 #rose {
@@ -395,7 +362,7 @@ canvas { width: 100%; height: 100%; display: block; }
   border-radius: 50%;
   border: 1.5px solid #6d7f68;
   background: rgba(8, 10, 8, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(214, 255, 74, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(244, 247, 241, 0.28);
   transform: rotate(var(--deg));
 }
 
@@ -420,14 +387,17 @@ canvas { width: 100%; height: 100%; display: block; }
 }
 
 #rose .n {
-  fill: var(--lime);
+  fill: var(--north);
   font-size: 15px;
 }
 
+#rose .north { fill: var(--north); }
+
 .zoom {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -452,15 +422,15 @@ canvas { width: 100%; height: 100%; display: block; }
   border-top: 1px solid var(--line);
 }
 
-.dock-btn.is-set { border-color: var(--lime); color: var(--lime); }
+.dock-btn.is-set { border-color: var(--leaf); color: var(--leaf); }
 
 .dock-btn.is-on {
-  background: var(--lime);
-  color: var(--lime-ink);
-  border-color: var(--lime);
+  background: var(--leaf);
+  color: var(--leaf-ink);
+  border-color: var(--leaf);
 }
 
-.dock-btn.hot { box-shadow: 0 0 0 2px var(--lime); }
+.dock-btn.hot { box-shadow: 0 0 0 2px var(--leaf); }
 
 .dock-pass {
   grid-column: 1 / -1;
@@ -492,9 +462,9 @@ canvas { width: 100%; height: 100%; display: block; }
 }
 
 .dock-pass-auto[aria-pressed="true"] {
-  background: var(--lime);
-  color: var(--lime-ink);
-  border-color: var(--lime);
+  background: var(--leaf);
+  color: var(--leaf-ink);
+  border-color: var(--leaf);
 }
 
 .stepper {
@@ -513,7 +483,7 @@ canvas { width: 100%; height: 100%; display: block; }
 .check input {
   width: 22px;
   height: 22px;
-  accent-color: var(--lime);
+  accent-color: var(--leaf);
 }
 
 .stepper button { font-size: 1.6rem; }
@@ -615,12 +585,12 @@ h3 {
 }
 
 .seg button[aria-pressed="true"] {
-  background: var(--lime);
-  color: var(--lime-ink);
-  border-color: var(--lime);
+  background: var(--leaf);
+  color: var(--leaf-ink);
+  border-color: var(--leaf);
 }
 
-input[type="range"] { width: 100%; accent-color: var(--lime); }
+input[type="range"] { width: 100%; accent-color: var(--leaf); }
 
 .sensors {
   list-style: none;
