@@ -85,6 +85,8 @@ let wakeLock = null;
 let wantWake = false;
 let audioCtx = null;
 let lastBeep = 0;
+let gpsRestartAt = 0;
+let wakeToken = 0;
 let rafId = 0;
 let lastFrame = 0;
 let barSig = '';
@@ -606,7 +608,15 @@ function sampleRow() {
   const pos = vehicle();
   if (!pos) return;
   const last = state.rowPoints[state.rowPoints.length - 1];
-  if (last && Math.hypot(pos.x - last.x, pos.y - last.y) < 2) return;
+  if (last) {
+    const gap = Math.hypot(pos.x - last.x, pos.y - last.y);
+    if (gap < 2) return;
+    if (gap > 20) {
+      finishRow(null);
+      state.rowPoints = [{ x: pos.x, y: pos.y }];
+      return;
+    }
+  }
   state.rowPoints.push({ x: pos.x, y: pos.y });
 }
 
@@ -939,15 +949,21 @@ function onFix(position) {
   const coords = position.coords;
   const accuracy = Number.isFinite(coords.accuracy) ? coords.accuracy : 30;
   state.gpsError = '';
-  if (accuracy > 45 && state.stable) {
+  const timestamp = position.timestamp || Date.now();
+  const gap = state.fix ? (timestamp - state.fix.ts) / 1000 : 0;
+  const interrupted = gap > 6;
+  if (accuracy > 45 && state.stable && !interrupted) {
     state.sensorGps = 'weak';
     return;
   }
-  const timestamp = position.timestamp || Date.now();
   if (!state.origin) state.origin = { lat: coords.latitude, lon: coords.longitude };
   const local = toLocal(coords.latitude, coords.longitude, state.origin);
   const speed = coords.speed == null || coords.speed < 0 ? null : coords.speed;
-  if (state.stable && state.fix) {
+  if (interrupted) {
+    state.stable = { x: local.x, y: local.y };
+    state.lastPaint = null;
+    state.turn = null;
+  } else if (state.stable && state.fix) {
     const dist = Math.hypot(local.x - state.stable.x, local.y - state.stable.y);
     const dt = Math.max(0.2, (timestamp - state.fix.ts) / 1000);
     const limit = Math.max(12, (speed || 0) * dt * 4 + accuracy);
@@ -1044,6 +1060,7 @@ function onFixError(error) {
 
 function startLiveSensors() {
   if (state.mode !== 'live' || document.visibilityState !== 'visible') return;
+  gpsRestartAt = performance.now();
   if (navigator.geolocation && sensors.watchId == null) {
     sensors.watchId = navigator.geolocation.watchPosition(onFix, onFixError, {
       enableHighAccuracy: true,
@@ -1131,7 +1148,8 @@ async function requestSensorPermissions() {
   }
 }
 
-function onWakeRelease() {
+function onWakeRelease(event) {
+  if (event && event.target && event.target !== wakeLock) return;
   wakeLock = null;
   state.awake = false;
   paintWake();
@@ -1139,12 +1157,15 @@ function onWakeRelease() {
 }
 
 async function holdWake(on) {
+  const token = ++wakeToken;
   wantWake = on && document.visibilityState === 'visible';
   if (!wantWake) {
-    if (wakeLock) {
-      try { await wakeLock.release(); } catch (error) {}
-      wakeLock = null;
+    const lock = wakeLock;
+    wakeLock = null;
+    if (lock) {
+      try { await lock.release(); } catch (error) {}
     }
+    if (token !== wakeToken) return;
     state.awake = false;
     paintWake();
     return;
@@ -1161,11 +1182,17 @@ async function holdWake(on) {
     return;
   }
   try {
-    wakeLock = await navigator.wakeLock.request('screen');
+    const lock = await navigator.wakeLock.request('screen');
+    if (token !== wakeToken || !wantWake) {
+      try { await lock.release(); } catch (error) {}
+      return;
+    }
+    wakeLock = lock;
     wakeLock.addEventListener('release', onWakeRelease);
     state.awake = true;
     state.wakeNote = '';
   } catch (error) {
+    if (token !== wakeToken) return;
     state.awake = false;
     state.wakeNote = 'Tap the screen once to keep it awake';
   }
@@ -1185,17 +1212,28 @@ function paintWake() {
   }
 }
 
+function audioNeedsResume() {
+  return audioCtx && audioCtx.state !== 'running' && audioCtx.state !== 'closed';
+}
+
 function ensureAudio() {
   const Context = window.AudioContext || window.webkitAudioContext;
   if (!Context) return null;
-  if (!audioCtx) audioCtx = new Context();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (!audioCtx) {
+    audioCtx = new Context();
+    audioCtx.addEventListener('statechange', () => {
+      if (document.visibilityState === 'visible' && state.running && state.audio && audioNeedsResume()) {
+        audioCtx.resume().catch(() => {});
+      }
+    });
+  }
+  if (audioNeedsResume()) audioCtx.resume().catch(() => {});
   return audioCtx;
 }
 
 function tone(frequency, panValue) {
   const ctx = audioCtx;
-  if (!ctx) return;
+  if (!ctx || ctx.state !== 'running') return;
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -1233,19 +1271,48 @@ function serviceAudio(steer) {
   tone(steer.steer > 0 ? 784 : 494, steer.steer > 0 ? 0.9 : -0.9);
 }
 
+function pauseField() {
+  state.turn = null;
+  state.lastPaint = null;
+  if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
+  stopLiveSensors();
+  stopLoop();
+  holdWake(false);
+}
+
 function syncSession() {
   const visible = document.visibilityState === 'visible';
-  holdWake(visible);
-  if (visible && state.running && state.mode === 'live') startLiveSensors();
-  else stopLiveSensors();
-  if (!visible || !state.running) {
-    if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
-    stopLoop();
-  } else if (state.audio && audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {});
+  if (!visible) {
+    pauseField();
+    paintWake();
+    return;
   }
-  if (visible && state.running) startLoop();
+  holdWake(true);
+  if (!state.running) {
+    stopLiveSensors();
+    stopLoop();
+    if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
+    paintWake();
+    return;
+  }
+  if (state.mode === 'live') startLiveSensors();
+  if (state.audio) ensureAudio();
+  startLoop();
   paintWake();
+}
+
+function reviveGps() {
+  if (state.mode !== 'live' || !state.running || document.visibilityState !== 'visible') return;
+  if (state.gpsError === 'Location permission denied') return;
+  const age = state.fix ? (performance.now() - state.fix.localTs) / 1000 : 999;
+  if (age < 8 || performance.now() - gpsRestartAt < 8000) return;
+  gpsRestartAt = performance.now();
+  if (sensors.watchId != null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(sensors.watchId);
+    sensors.watchId = null;
+  }
+  state.sensorGps = 'searching';
+  startLiveSensors();
 }
 
 function showSplash() {
@@ -1860,8 +1927,9 @@ function updateReadout(guide) {
   document.body.dataset.steer = guide ? state.steerBand : 'none';
   const waiting = state.mode === 'live' && !vehicle();
   const idle = !recordingContour && !guide;
-  els.steerDir.classList.toggle('prompt', (idle || recordingContour) && !waiting);
-  if (waiting && !guide) {
+  const gpsStale = state.mode === 'live' && (!state.fix || performance.now() - state.fix.localTs > 8000);
+  els.steerDir.classList.toggle('prompt', (idle || recordingContour) && !waiting && !gpsStale);
+  if (gpsStale || (waiting && !guide)) {
     setText(els.steerDir, 'WAITING FOR GPS');
   } else if (recordingContour) {
     setText(els.steerDir, 'Recording contour');
@@ -1870,7 +1938,7 @@ function updateReadout(guide) {
   } else if (steer == null) {
     setText(els.steerDir, 'NO HEADING');
   } else {
-    setText(els.steerDir, state.steerBand === 'on' ? 'ON LINE' : state.steerBand === 'right' ? 'STEER RIGHT' : 'STEER LEFT');
+    setText(els.steerDir, state.steerBand === 'on' ? 'CENTERED' : state.steerBand === 'right' ? 'STEER RIGHT' : 'STEER LEFT');
   }
 
   if (state.mode === 'demo') {
@@ -1898,7 +1966,7 @@ function paintGps() {
     setText(pill, 'DEMO');
     return;
   }
-  if (!state.fix) {
+  if (!state.fix || performance.now() - state.fix.localTs > 8000) {
     setText(pill, state.gpsError || 'GPS …');
     pill.classList.add('poor');
     return;
@@ -2070,13 +2138,15 @@ function loop(timestamp) {
   lastFrame = timestamp;
   try {
     if (state.mode === 'demo') stepDemo(dt);
+    else reviveGps();
     smoothHeading(dt);
     coastPosition(dt);
     rememberBias();
     sampleRow();
     watchTurn();
     lockAPlus();
-    const guide = guidanceNow();
+    const gpsStale = state.mode === 'live' && (!state.fix || performance.now() - state.fix.localTs > 8000);
+    const guide = gpsStale ? null : guidanceNow();
     serviceAudio(guide);
     maybePaint(vehicle());
     draw();
@@ -2088,10 +2158,10 @@ function loop(timestamp) {
 }
 
 function startLoop() {
-  if (!rafId) {
-    lastFrame = 0;
-    rafId = requestAnimationFrame(loop);
-  }
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = 0;
+  lastFrame = 0;
+  rafId = requestAnimationFrame(loop);
 }
 
 function stopLoop() {
@@ -2221,12 +2291,20 @@ function bind() {
     syncSession();
   });
   document.addEventListener('pointerdown', () => {
-    if (document.visibilityState === 'visible') holdWake(true);
+    if (document.visibilityState !== 'visible') return;
+    holdWake(true);
+    if (state.audio) ensureAudio();
   }, { passive: true });
   window.addEventListener('pagehide', () => {
     saveFieldNow();
-    holdWake(false);
+    pauseField();
   });
+  window.addEventListener('pageshow', () => syncSession());
+  document.addEventListener('freeze', () => {
+    saveFieldNow();
+    pauseField();
+  });
+  document.addEventListener('resume', () => syncSession());
   new ResizeObserver(() => resizeCanvas()).observe(els.map.parentElement);
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
