@@ -171,54 +171,56 @@ h1 {
   border-bottom: 1px solid var(--line);
 }
 
+.pill,
 .boom-read {
-  margin: 0;
-  justify-self: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  line-height: 1;
+  justify-content: center;
+  justify-self: center;
+  box-sizing: border-box;
+  width: 4.15rem;
+  height: 2.2rem;
+  margin: 0;
+  padding: 2px 4px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  line-height: 1.05;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+
+.pill {
+  background: #241c14;
+  color: #ffb089;
+}
+
+.boom-read {
   gap: 1px;
+  background: #1c221c;
+  color: var(--paper);
+}
+
+.boom-label,
+.boom-read b {
+  font-size: inherit;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .boom-label {
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .boom-read b {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--paper);
-}
-
-.top-tools {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  min-width: 4.75rem;
-  border-radius: 999px;
-  padding: 7px 12px;
-  background: #241c14;
-  color: #ffb089;
-  font-weight: 700;
-  font-size: 0.85rem;
-  line-height: 1;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
 }
 
 .pill.ok { background: #1c221c; color: var(--paper); }
@@ -234,12 +236,6 @@ h1 {
 }
 
 .icon-btn svg { width: 22px; height: 22px; fill: var(--ink); }
-
-#gearBtn svg {
-  width: 26px;
-  height: 26px;
-  fill: #8e8e93;
-}
 
 .cluster {
   grid-area: cluster;
@@ -347,18 +343,32 @@ canvas { width: 100%; height: 100%; display: block; }
 }
 
 .compass {
-  position: relative;
-  justify-self: start;
-  width: 76px;
-  height: 76px;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  line-height: 1;
+  appearance: none;
+}
+
+.compass-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
 }
 
 #rose {
-  position: absolute;
-  left: 7px;
-  top: 7px;
+  position: relative;
   width: 62px;
   height: 62px;
+  flex: 0 0 auto;
   border-radius: 50%;
   border: 1.5px solid #6d7f68;
   background: rgba(8, 10, 8, 0.9);

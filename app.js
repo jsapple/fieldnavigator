@@ -1863,7 +1863,7 @@ function updateReadout(guide) {
     setText(els.steerDir, 'Recording contour');
   } else if (idle) {
     setText(els.steerKicker, 'Guidance');
-    setText(els.steerDir, 'set A or Contour');
+    setText(els.steerDir, 'set mark');
   } else if (steer == null) {
     setText(els.steerKicker, 'Guidance');
     setText(els.steerDir, 'NO HEADING');
@@ -1919,7 +1919,7 @@ function paintStatus(guide) {
     return;
   }
   if (contourRecording()) {
-    setText(els.statusLine, 'set A or Contour');
+    setText(els.statusLine, 'set mark');
     return;
   }
   if (state.guide === 'ab' && state.a && !state.b && state.aHeading == null) {
@@ -2102,7 +2102,7 @@ function stopLoop() {
 function bind() {
   const ids = [
     'splash', 'cab', 'startBtn', 'demoBtn', 'installBtn', 'installHint', 'offlineFlag',
-    'gpsPill', 'gearBtn', 'steerKicker', 'steerDir', 'speedRead',
+    'gpsPill', 'compassBtn', 'steerKicker', 'steerDir', 'speedRead',
     'headRead', 'sourceRead', 'lightbar', 'markA', 'markB', 'applyBtn',
     'contourBtn', 'dockPassMinus', 'dockPassAuto', 'dockPassMode', 'dockPassPlus', 'widthMinus', 'widthPlus', 'widthInput', 'widthUnit',
     'boomChip', 'passChip', 'acreChip', 'map', 'rose', 'zoomIn', 'zoomOut', 'sheet', 'closeSheet',
@@ -2139,7 +2139,7 @@ function bind() {
     deferredInstall = null;
     els.installBtn.hidden = true;
   });
-  els.gearBtn.addEventListener('click', () => {
+  els.compassBtn.addEventListener('click', () => {
     syncSheet();
     els.sheet.showModal();
   });

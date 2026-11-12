@@ -42,8 +42,12 @@
 
   <div id="cab" class="app" hidden>
     <header class="top">
-      <div class="compass" aria-hidden="true">
-        <div id="rose">
+      <div class="boom-read">
+        <span class="boom-label">offset</span>
+        <b id="boomChip">20 ft</b>
+      </div>
+      <button id="compassBtn" class="compass" type="button" aria-label="Settings">
+        <div id="rose" aria-hidden="true">
           <svg viewBox="0 0 100 100">
             <g fill="none" stroke-linecap="round">
               <line class="minor" x1="61.4" y1="7.5" x2="60.4" y2="11.4"/>
@@ -75,17 +79,9 @@
             <text x="11" y="50">W</text>
           </svg>
         </div>
-      </div>
-      <div class="boom-read">
-        <span class="boom-label">offset</span>
-        <b id="boomChip">20 ft</b>
-      </div>
-      <div class="top-tools">
-        <p id="gpsPill" class="pill">GPS</p>
-        <button id="gearBtn" class="icon-btn" type="button" aria-label="Settings">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M9.89 1.15A11.05 11.05 0 0 1 14.11 1.15L14.02 4.72A7.55 7.55 0 0 1 15.72 5.43L18.18 2.84A11.05 11.05 0 0 1 21.16 5.82L18.57 8.28A7.55 7.55 0 0 1 19.28 9.98L22.85 9.89A11.05 11.05 0 0 1 22.85 14.11L19.28 14.02A7.55 7.55 0 0 1 18.57 15.72L21.16 18.18A11.05 11.05 0 0 1 18.18 21.16L15.72 18.57A7.55 7.55 0 0 1 14.02 19.28L14.11 22.85A11.05 11.05 0 0 1 9.89 22.85L9.98 19.28A7.55 7.55 0 0 1 8.28 18.57L5.82 21.16A11.05 11.05 0 0 1 2.84 18.18L5.43 15.72A7.55 7.55 0 0 1 4.72 14.02L1.15 14.11A11.05 11.05 0 0 1 1.15 9.89L4.72 9.98A7.55 7.55 0 0 1 5.43 8.28L2.84 5.82A11.05 11.05 0 0 1 5.82 2.84L8.28 5.43A7.55 7.55 0 0 1 9.98 4.72L9.89 1.15ZM15.55 12.00A3.55 3.55 0 1 0 8.45 12.00A3.55 3.55 0 1 0 15.55 12.00Z"/></svg>
-        </button>
-      </div>
+        <span class="compass-label">Settings</span>
+      </button>
+      <p id="gpsPill" class="pill">GPS</p>
     </header>
 
     <div class="side">
