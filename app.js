@@ -1,6 +1,9 @@
 const EARTH = 6378137;
 const FEET = 0.3048;
 const BASE_PPM = 8;
+const ZOOM_MIN = 0.12;
+const ZOOM_MAX = 3;
+const ZOOM_START = 0.42;
 const BUFFER = 2048;
 const BUFFER_CENTER = BUFFER / 2;
 
@@ -24,7 +27,7 @@ const state = {
   tally: true,
   appliedM2: 0,
   passes: {},
-  zoom: 0.78,
+  zoom: ZOOM_START,
   nudgeM: 0,
   passLock: null,
   applying: false,
@@ -222,7 +225,10 @@ function loadSettings() {
       const feet = Math.abs(savedFeet - 5) < 0.25 ? 10 : savedFeet;
       state.deadbandM = clamp(feet, 1, 20) * FEET;
     }
-    if (Number.isFinite(saved.zoom)) state.zoom = clamp(saved.zoom, 0.35, 3);
+    if (Number.isFinite(saved.zoom)) {
+      const zoom = Math.abs(saved.zoom - 0.78) < 0.02 ? ZOOM_START : saved.zoom;
+      state.zoom = clamp(zoom, ZOOM_MIN, ZOOM_MAX);
+    }
     if (saved.tally === false) state.tally = false;
     if (Number.isFinite(saved.compassBias)) state.compassBias = clamp(saved.compassBias, -40, 40);
     state.biasSaved = state.compassBias;
@@ -1609,7 +1615,7 @@ function resizeCanvas() {
 
 function drawGrid(ctx, pos, ppm) {
   const step = 20;
-  const range = 160 / Math.max(0.4, state.zoom);
+  const range = Math.max(els.map.width, els.map.height) / Math.max(ppm, 0.01);
   const x0 = Math.floor((pos.x - range) / step) * step;
   const y0 = Math.floor((pos.y - range) / step) * step;
   ctx.beginPath();
@@ -1856,19 +1862,14 @@ function updateReadout(guide) {
   const idle = !recordingContour && !guide;
   els.steerDir.classList.toggle('prompt', (idle || recordingContour) && !waiting);
   if (waiting && !guide) {
-    setText(els.steerKicker, 'Guidance');
     setText(els.steerDir, 'WAITING FOR GPS');
   } else if (recordingContour) {
-    setText(els.steerKicker, 'Guidance');
     setText(els.steerDir, 'Recording contour');
   } else if (idle) {
-    setText(els.steerKicker, 'Guidance');
     setText(els.steerDir, 'set mark');
   } else if (steer == null) {
-    setText(els.steerKicker, 'Guidance');
     setText(els.steerDir, 'NO HEADING');
   } else {
-    setText(els.steerKicker, 'Guidance');
     setText(els.steerDir, state.steerBand === 'on' ? 'ON LINE' : state.steerBand === 'right' ? 'STEER RIGHT' : 'STEER LEFT');
   }
 
@@ -2102,7 +2103,7 @@ function stopLoop() {
 function bind() {
   const ids = [
     'splash', 'cab', 'startBtn', 'demoBtn', 'installBtn', 'installHint', 'offlineFlag',
-    'gpsPill', 'compassBtn', 'steerKicker', 'steerDir', 'speedRead',
+    'gpsPill', 'compassBtn', 'steerDir', 'speedRead',
     'headRead', 'sourceRead', 'lightbar', 'markA', 'markB', 'applyBtn',
     'contourBtn', 'dockPassMinus', 'dockPassAuto', 'dockPassMode', 'dockPassPlus', 'widthMinus', 'widthPlus', 'widthInput', 'widthUnit',
     'boomChip', 'passChip', 'acreChip', 'map', 'rose', 'zoomIn', 'zoomOut', 'sheet', 'closeSheet',
@@ -2162,11 +2163,11 @@ function bind() {
   els.dockPassPlus.addEventListener('click', () => shiftPass(1));
   els.dockPassAuto.addEventListener('click', setPassAuto);
   els.zoomIn.addEventListener('click', () => {
-    state.zoom = clamp(state.zoom * 1.2, 0.35, 3);
+    state.zoom = clamp(state.zoom * 1.2, ZOOM_MIN, ZOOM_MAX);
     saveSettings();
   });
   els.zoomOut.addEventListener('click', () => {
-    state.zoom = clamp(state.zoom / 1.2, 0.35, 3);
+    state.zoom = clamp(state.zoom / 1.2, ZOOM_MIN, ZOOM_MAX);
     saveSettings();
   });
   document.querySelectorAll('[data-mount]').forEach((button) => {

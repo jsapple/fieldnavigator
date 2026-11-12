@@ -44,7 +44,10 @@ button { cursor: pointer; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: calc(24px + var(--safe-top)) 20px calc(8px + var(--safe-bottom));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: calc(24px + var(--safe-top)) 20px calc(16px + var(--safe-bottom));
   background:
     radial-gradient(420px 220px at 50% 22%, rgba(214, 255, 74, 0.09), transparent 70%),
     var(--bg);
@@ -54,8 +57,8 @@ button { cursor: pointer; }
 
 .splash-card {
   width: min(440px, 100%);
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: min-content;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -79,16 +82,16 @@ button { cursor: pointer; }
 
 h1 {
   margin: 0;
-  font-size: 2.6rem;
+  font-size: clamp(1.7rem, 10vw, 2.6rem);
   line-height: 0.9;
   letter-spacing: -0.04em;
   font-weight: 700;
-  white-space: nowrap;
 }
 
 .lede, .points, .hint, .fine {
   color: var(--muted);
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .lede { margin: 0; font-size: 1.05rem; }
@@ -130,7 +133,7 @@ h1 {
   letter-spacing: 0.01em;
 }
 
-.btn { width: 100%; }
+.btn { width: 100%; flex-shrink: 0; }
 
 .btn.primary {
   background: var(--leaf);
@@ -239,22 +242,13 @@ h1 {
 
 .cluster {
   grid-area: cluster;
-  padding: 8px 16px 4px;
+  padding: 2px 16px 2px;
   text-align: center;
   background: #141a15;
 }
 
-.steer-kicker, .steer-dir { margin: 0; }
-
-.steer-kicker {
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.72rem;
-}
-
 .steer-dir {
-  margin-top: 2px;
+  margin: 0;
   font-size: clamp(2.2rem, 9vw, 3.2rem);
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -532,7 +526,15 @@ dialog {
   color: var(--ink);
   width: min(460px, calc(100% - 16px));
   border-radius: 18px;
-  max-height: min(720px, calc(100% - 20px));
+  max-height: calc(100% - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(100svh - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+}
+
+#sheet {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 dialog::backdrop { background: rgba(0, 0, 0, 0.62); }
@@ -558,9 +560,13 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.62); }
 }
 
 .sheet-body {
-  overflow: auto;
-  padding: 8px 16px 18px;
-  max-height: min(720px, calc(100dvh - 20px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px 16px calc(18px + var(--safe-bottom));
 }
 
 .sheet-head {
@@ -613,12 +619,14 @@ input[type="range"] { width: 100%; accent-color: var(--leaf); }
 .sensors li {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
   padding: 8px 10px;
   background: #101510;
   border-radius: 10px;
 }
 
+.sensors span, .sensors b { min-width: 0; overflow-wrap: anywhere; }
 .sensors span { color: var(--muted); }
 .sensors b { font-weight: 700; text-align: right; }
 
@@ -660,7 +668,7 @@ input[type="range"] { width: 100%; accent-color: var(--leaf); }
     border-right: 1px solid var(--line);
   }
 
-  .cluster { padding-top: 12px; }
+  .cluster { padding-top: 4px; }
 }
 
 @media (min-width: 900px) and (min-height: 700px) {
@@ -677,10 +685,20 @@ input[type="range"] { width: 100%; accent-color: var(--leaf); }
     width: 390px;
     height: min(844px, calc(100% - 32px));
     border-radius: 28px;
-    overflow: hidden;
     border: 1px solid var(--line);
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
   }
+
+  #splash { overflow-x: hidden; overflow-y: auto; }
+  #cab.app { overflow: hidden; }
+}
+
+@media (max-height: 700px) {
+  #splash { padding-top: calc(12px + var(--safe-top)); }
+  .splash-card { gap: 8px; }
+  .splash-icon { width: 56px; height: 56px; border-radius: 14px; }
+  .lede { font-size: 0.98rem; }
+  .points { margin: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
