@@ -591,6 +591,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.62); }
   padding: 16px;
 }
 
+.offset-pad:focus,
+.offset-pad:focus-visible {
+  outline: none;
+}
+
 .offset-read {
   display: flex;
   align-items: baseline;

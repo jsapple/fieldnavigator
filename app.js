@@ -2239,6 +2239,11 @@ function openOffsetPad() {
   offsetReplace = true;
   setText(els.offsetEntry, offsetDraft);
   if (!els.offsetPad.open) els.offsetPad.showModal();
+  const park = () => {
+    if (els.offsetPad.open && document.activeElement !== els.offsetPad) els.offsetPad.focus();
+  };
+  park();
+  requestAnimationFrame(park);
 }
 
 function showOffsetDraft() {
