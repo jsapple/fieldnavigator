@@ -42,10 +42,12 @@
 
   <div id="cab" class="app" hidden>
     <header class="top">
-      <div class="boom-read">
-        <span class="boom-label">offset</span>
-        <b id="boomChip"><span id="boomNum">20</span><span class="boom-unit">ft</span></b>
-      </div>
+      <button id="offsetBtn" class="top-slot" type="button" aria-label="Set offset">
+        <span class="boom-read">
+          <b id="boomChip"><span id="boomNum">20</span><span class="boom-unit">ft</span></b>
+        </span>
+        <span class="top-caption">OFFSET</span>
+      </button>
       <button id="compassBtn" class="compass" type="button" aria-label="Settings">
         <div id="rose" aria-hidden="true">
           <svg viewBox="0 0 100 100">
@@ -81,7 +83,10 @@
         </div>
         <span class="compass-label">Settings</span>
       </button>
-      <p id="gpsPill" class="pill">GPS</p>
+      <div class="top-slot">
+        <button id="gpsPill" class="pill" type="button" aria-label="Show location">—</button>
+        <span class="top-caption">GPS</span>
+      </div>
     </header>
 
     <div class="side">
@@ -135,20 +140,6 @@
       </section>
 
       <section>
-        <h3>Offset</h3>
-        <div class="stepper">
-          <button id="widthMinus" type="button" aria-label="Narrower offset">−</button>
-          <label class="width-edit">
-            <span class="width-pair">
-              <input id="widthInput" inputmode="decimal" aria-label="Offset in feet">
-              <span id="widthUnit">ft</span>
-            </span>
-          </label>
-          <button id="widthPlus" type="button" aria-label="Wider offset">+</button>
-        </div>
-      </section>
-
-      <section>
         <h3>Beep volume <span id="volumeRead"></span></h3>
         <input id="volume" type="range" min="0" max="100" step="1">
         <p class="fine">Left of the pass is a lower tone in the left ear. Right is a higher tone. Beeps speed up as you drift, and stay quiet on the line. Zero is silent.</p>
@@ -193,6 +184,34 @@
   </dialog>
 
   <p id="toast" class="toast" hidden></p>
+  <dialog id="offsetPad" class="offset-pad" aria-label="Offset">
+    <p class="offset-read"><b id="offsetEntry">20</b><span>ft</span></p>
+    <div class="pad-keys">
+      <button type="button" data-digit="1">1</button>
+      <button type="button" data-digit="2">2</button>
+      <button type="button" data-digit="3">3</button>
+      <button type="button" data-digit="4">4</button>
+      <button type="button" data-digit="5">5</button>
+      <button type="button" data-digit="6">6</button>
+      <button type="button" data-digit="7">7</button>
+      <button type="button" data-digit="8">8</button>
+      <button type="button" data-digit="9">9</button>
+      <button type="button" data-back="1" aria-label="Delete">⌫</button>
+      <button type="button" data-digit="0">0</button>
+      <button type="button" data-clear="1">C</button>
+    </div>
+    <div class="pad-actions">
+      <button id="offsetCancel" class="btn" type="button">Cancel</button>
+      <button id="offsetDone" class="btn primary" type="button">Set</button>
+    </div>
+  </dialog>
+
+  <dialog id="gpsCard" class="gps-card" aria-label="Location">
+    <p class="gps-coord" id="gpsLat">—</p>
+    <p class="gps-coord" id="gpsLon">—</p>
+    <button id="gpsClose" class="btn" type="button">Close</button>
+  </dialog>
+
   <dialog id="confirm" class="confirm">
     <p id="confirmText"></p>
     <div class="confirm-actions">

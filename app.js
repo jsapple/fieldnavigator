@@ -87,6 +87,12 @@ let audioCtx = null;
 let lastBeep = 0;
 let gpsRestartAt = 0;
 let courseSmooth = null;
+let sensorHeading = null;
+let headingLock = null;
+let alignSince = 0;
+let lockYaw = 0;
+let aPlusSince = 0;
+let aPlusHold = null;
 let wakeToken = 0;
 let rafId = 0;
 let lastFrame = 0;
@@ -216,7 +222,7 @@ function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem('fieldnav-settings-v2') || 'null');
     if (!saved) return;
-    if (Number.isFinite(saved.boomM)) state.boomM = clamp(saved.boomM, 4 * FEET, 200 * FEET);
+    if (Number.isFinite(saved.boomM)) state.boomM = clamp(saved.boomM, 2 * FEET, 200 * FEET);
     if (Number.isFinite(saved.volume)) {
       const volume = Math.abs(saved.volume - 0.75) < 0.011 ? 0.25 : saved.volume;
       state.volume = clamp(volume, 0, 1);
@@ -489,6 +495,33 @@ function courseHeading() {
   return state.heading;
 }
 
+function clearHeadingLock() {
+  headingLock = null;
+  alignSince = 0;
+  lockYaw = 0;
+}
+
+function clearAPlusSettle() {
+  aPlusSince = 0;
+  aPlusHold = null;
+}
+
+function headingAgreement() {
+  if (turningNow()) return null;
+  if (state.mode === 'demo') return demo.speed > 1.3 ? demo.heading : null;
+  const fix = state.fix;
+  if (!fix || fix.speed == null || fix.speed < 1.3) return null;
+  if (performance.now() - fix.localTs > 2500) return null;
+  const course = Number.isFinite(fix.course) ? fix.course : null;
+  const compassFresh = state.compass != null && performance.now() - state.compassTs < 1200;
+  const compass = compassFresh ? normDeg(state.compass + state.compassBias) : null;
+  if (compass != null && course != null) {
+    if (Math.abs(angleDelta(compass, course)) > 12) return null;
+    return lerpAngle(compass, course, 0.5);
+  }
+  return course;
+}
+
 function activeCurve() {
   if (state.guide === 'saved' && contourReady()) return state.contourPoints;
   if (state.guide === 'next' && state.nextPoints.length >= 2) return state.nextPoints;
@@ -703,6 +736,7 @@ function travelSpeed() {
 }
 
 function watchTurn() {
+  if (headingLock != null) return;
   const speed = travelSpeed();
   if (speed == null || speed < 0.8) return;
   const heading = currentHeading();
@@ -896,23 +930,79 @@ function fuseFromGps() {
 function smoothHeading(dt) {
   if (state.mode === 'demo') {
     state.heading = demo.heading;
+    sensorHeading = demo.heading;
     state.headingSource = 'Demo path';
+    clearHeadingLock();
     return;
   }
   const yawFresh = performance.now() - state.yawTs < 400 && Number.isFinite(state.yawRate);
-  if (state.heading != null && yawFresh) state.heading = normDeg(state.heading + state.yawRate * dt);
+  if (sensorHeading != null && yawFresh) sensorHeading = normDeg(sensorHeading + state.yawRate * dt);
   learnCompassBias(dt);
   if (state.headingTarget == null) {
-    state.headingSource = state.heading == null ? 'No heading' : (yawFresh ? 'Gyro' : 'No heading');
+    state.heading = sensorHeading;
+    state.headingSource = sensorHeading == null ? 'No heading' : (yawFresh ? 'Gyro' : 'No heading');
+  } else {
+    if (sensorHeading == null) sensorHeading = state.headingTarget;
+    else {
+      const gpsLed = state.headingSource === 'GPS + compass' || state.headingSource === 'GPS course' || state.headingSource === 'Line lock';
+      const rate = turningNow() ? 0.85 : gpsLed ? 2.4 : 1.15;
+      sensorHeading = lerpAngle(sensorHeading, state.headingTarget, 1 - Math.exp(-rate * dt));
+    }
+    state.heading = sensorHeading;
+  }
+  applyHeadingLock(dt);
+}
+
+function applyHeadingLock(dt) {
+  if (state.guide !== 'ab' || activeCurve()) {
+    clearHeadingLock();
     return;
   }
-  if (state.heading == null) {
-    state.heading = state.headingTarget;
+  const pair = abPair();
+  const frame = pair && lineFrame(pair.a, pair.b);
+  if (!frame) {
+    clearHeadingLock();
     return;
   }
-  const gpsLed = state.headingSource === 'GPS + compass' || state.headingSource === 'GPS course';
-  const rate = turningNow() ? 0.85 : gpsLed ? 2.4 : 1.15;
-  state.heading = lerpAngle(state.heading, state.headingTarget, 1 - Math.exp(-rate * dt));
+  const lineHeading = normDeg(Math.atan2(frame.ux, frame.uy) * 180 / Math.PI);
+  const yawFresh = performance.now() - state.yawTs < 400 && Number.isFinite(state.yawRate);
+  if (headingLock != null) {
+    if (yawFresh) lockYaw += state.yawRate * dt;
+    const turned = Math.abs(lockYaw) > 28 || (turningNow() && Math.abs(lockYaw) > 12);
+    if (turned) {
+      const broke = lockYaw;
+      const nose = state.heading;
+      if (!state.turn) state.turn = { phase: 'seek', sign: 1, accum: 0, last: nose, since: 0 };
+      state.turn.phase = 'turning';
+      state.turn.accum = broke;
+      state.turn.last = nose == null ? headingLock : nose;
+      state.turn.since = performance.now();
+      clearHeadingLock();
+      return;
+    }
+    state.heading = headingLock;
+    state.headingSource = 'Line lock';
+    return;
+  }
+  const nose = state.heading;
+  const speed = travelSpeed();
+  const travel = nose == null ? null : (Math.abs(angleDelta(nose, lineHeading)) > 90 ? normDeg(lineHeading + 180) : lineHeading);
+  const aligned = travel != null && speed != null && speed > 1.3 && !turningNow() && Math.abs(angleDelta(nose, travel)) < 12;
+  if (!aligned) {
+    alignSince = 0;
+    return;
+  }
+  if (!alignSince) alignSince = performance.now();
+  if (performance.now() - alignSince < 1000) return;
+  headingLock = travel;
+  lockYaw = 0;
+  if (!state.turn) state.turn = { phase: 'straight', sign: 1, accum: 0, last: travel, since: 0 };
+  state.turn.phase = 'straight';
+  state.turn.sign = Math.abs(angleDelta(travel, lineHeading)) < 90 ? 1 : -1;
+  state.turn.last = travel;
+  state.turn.accum = 0;
+  state.heading = travel;
+  state.headingSource = 'Line lock';
 }
 
 function headingFromOrientationEvent(event) {
@@ -1055,6 +1145,8 @@ function onFix(position) {
     acc: accuracy,
     speed: travel,
     course: courseSmooth,
+    lat: coords.latitude,
+    lon: coords.longitude,
     ts: timestamp,
     localTs: performance.now(),
     held: !moving
@@ -1350,6 +1442,8 @@ function serviceAudio(steer) {
 function pauseField() {
   state.turn = null;
   state.lastPaint = null;
+  clearHeadingLock();
+  clearAPlusSettle();
   if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
   stopLiveSensors();
   stopLoop();
@@ -1465,30 +1559,40 @@ function markA() {
   state.guide = 'ab';
   state.passLock = null;
   state.turn = null;
+  clearHeadingLock();
+  clearAPlusSettle();
   if (state.mode === 'live' && state.fix && state.origin) {
     state.aGeo = toGeo(pos.x, pos.y);
     state.bGeo = null;
     saveFieldSoon();
   }
-  if (courseReady()) {
-    state.aHeading = courseHeading();
-    toast('A+ set. The line follows your GPS heading through A.');
-  } else {
-    const rough = state.mode === 'live' && state.fix && shownFeet(state.fix.acc) > 40;
-    toast(rough
-      ? 'A marked. GPS is wider than 40 ft, so this point may be off.'
-      : 'A marked. Drive straight to set the A+ heading.');
-  }
+  const rough = state.mode === 'live' && state.fix && shownFeet(state.fix.acc) > 40;
+  toast(rough
+    ? 'A marked. GPS is wider than 40 ft, so this point may be off.'
+    : 'A marked. Drive straight to set the A+ heading.');
   state.applying = true;
   state.lastPaint = null;
   paintStatic();
 }
 
 function lockAPlus() {
-  if (state.guide !== 'ab' || !state.a || state.b || state.aHeading != null || !courseReady()) return;
-  state.aHeading = courseHeading();
+  if (state.guide !== 'ab' || !state.a || state.b || state.aHeading != null) {
+    clearAPlusSettle();
+    return;
+  }
+  const sample = headingAgreement();
+  if (sample == null || (aPlusHold != null && Math.abs(angleDelta(aPlusHold, sample)) > 8)) {
+    aPlusSince = 0;
+    aPlusHold = sample;
+    return;
+  }
+  if (!aPlusSince) aPlusSince = performance.now();
+  aPlusHold = sample;
+  if (performance.now() - aPlusSince < 1000) return;
+  state.aHeading = sample;
+  clearAPlusSettle();
   saveFieldSoon();
-  toast('A+ set. The line follows your GPS heading through A.');
+  toast('A+ set. The line follows your heading through A.');
 }
 
 function toGeo(x, y) {
@@ -1522,6 +1626,8 @@ function markB() {
   state.aHeading = null;
   state.b = { x: pos.x, y: pos.y };
   state.guide = 'ab';
+  clearHeadingLock();
+  clearAPlusSettle();
   if (state.mode === 'live' && state.origin) {
     state.bGeo = toGeo(pos.x, pos.y);
     saveFieldSoon();
@@ -1589,13 +1695,6 @@ function nudgeLine(direction) {
   toast(direction > 0 ? 'Line moved right' : 'Line moved left');
 }
 
-function stepWidth(direction) {
-  state.boomM = clamp(boomFeet() + direction, 4, 200) * FEET;
-  rebuildCoverage();
-  saveSettings();
-  paintWidth();
-}
-
 function setApplying(on) {
   state.applying = on;
   state.lastPaint = null;
@@ -1643,6 +1742,8 @@ function toggleNext() {
       state.guide = state.nextPoints.length >= 2 ? 'next' : 'saved';
       state.passLock = null;
       state.turn = null;
+      clearHeadingLock();
+      clearAPlusSettle();
       state.rowPoints = [];
       state.applying = true;
       state.lastPaint = null;
@@ -1661,6 +1762,8 @@ function toggleNext() {
   state.guide = 'next';
   state.passLock = null;
   state.turn = null;
+  clearHeadingLock();
+  clearAPlusSettle();
   state.rowPoints = [];
   state.applying = true;
   state.lastPaint = null;
@@ -1701,6 +1804,8 @@ function newField() {
   state.aHeading = null;
   state.guide = 'ab';
   state.turn = null;
+  clearHeadingLock();
+  clearAPlusSettle();
   state.stable = null;
   state.fix = null;
   state.lastPaint = null;
@@ -2035,22 +2140,33 @@ function updateReadout(guide) {
   if (els.sheet.open) renderSensors();
 }
 
+function formatUsaCoord(value) {
+  return `${value.toFixed(5)}°`;
+}
+
+function fillGpsCard() {
+  const fix = state.fix;
+  const live = state.mode !== 'demo' && fix && Number.isFinite(fix.lat) && Number.isFinite(fix.lon);
+  els.gpsLon.hidden = false;
+  setText(els.gpsLat, live ? formatUsaCoord(fix.lat) : '—');
+  setText(els.gpsLon, live ? formatUsaCoord(fix.lon) : '—');
+}
+
 function paintGps() {
   const pill = els.gpsPill;
   pill.className = 'pill';
   if (state.mode === 'demo') {
     pill.classList.add('ok');
     setText(pill, 'DEMO');
-    return;
-  }
-  if (!state.fix || performance.now() - state.fix.localTs > 8000) {
+  } else if (!state.fix || performance.now() - state.fix.localTs > 8000) {
     setText(pill, state.gpsError || 'GPS …');
     pill.classList.add('poor');
-    return;
+  } else {
+    const feet = shownFeet(state.fix.acc);
+    setText(pill, `± ${feet} ft`);
+    pill.classList.add(feet <= 20 ? 'ok' : feet <= 40 ? 'fair' : 'poor');
   }
-  const feet = shownFeet(state.fix.acc);
-  setText(pill, `± ${feet} ft`);
-  pill.classList.add(feet <= 20 ? 'ok' : feet <= 40 ? 'fair' : 'poor');
+  if (els.gpsCard && els.gpsCard.open) fillGpsCard();
 }
 
 function patternName() {
@@ -2112,9 +2228,49 @@ function paintToggles() {
 }
 
 function paintWidth() {
-  if (document.activeElement !== els.widthInput) els.widthInput.value = String(boomFeet());
-  setText(els.widthUnit, 'ft');
   setText(els.boomNum, String(boomFeet()));
+}
+
+let offsetDraft = '';
+let offsetReplace = true;
+
+function openOffsetPad() {
+  offsetDraft = String(boomFeet());
+  offsetReplace = true;
+  setText(els.offsetEntry, offsetDraft);
+  if (!els.offsetPad.open) els.offsetPad.showModal();
+}
+
+function showOffsetDraft() {
+  setText(els.offsetEntry, offsetDraft || '0');
+}
+
+function pushOffsetDigit(digit) {
+  if (offsetReplace) {
+    offsetDraft = digit;
+    offsetReplace = false;
+  } else if (offsetDraft.length < 3) offsetDraft += digit;
+  offsetDraft = offsetDraft.replace(/^0+(\d)/, '$1');
+  showOffsetDraft();
+}
+
+function commitOffset() {
+  if (!offsetDraft) {
+    els.offsetPad.close();
+    return;
+  }
+  const value = Number(offsetDraft);
+  if (!Number.isFinite(value)) {
+    els.offsetPad.close();
+    return;
+  }
+  const feet = clamp(Math.round(value), 2, 200);
+  state.boomM = feet * FEET;
+  rebuildCoverage();
+  saveSettings();
+  paintWidth();
+  els.offsetPad.close();
+  if (feet !== Math.round(value)) toast(`Offset set to ${feet} ft`);
 }
 
 function paintWork() {
@@ -2250,10 +2406,10 @@ function stopLoop() {
 function bind() {
   const ids = [
     'splash', 'cab', 'startBtn', 'demoBtn', 'installBtn', 'installHint', 'offlineFlag',
-    'gpsPill', 'compassBtn', 'steerDir', 'speedRead',
+    'gpsPill', 'gpsCard', 'gpsLat', 'gpsLon', 'gpsClose', 'compassBtn', 'steerDir', 'speedRead',
     'headRead', 'sourceRead', 'lightbar', 'markA', 'markB', 'applyBtn',
-    'contourBtn', 'dockPassMinus', 'dockPassAuto', 'dockPassMode', 'dockPassPlus', 'widthMinus', 'widthPlus', 'widthInput', 'widthUnit',
-    'boomChip', 'boomNum', 'passChip', 'acreChip', 'map', 'rose', 'zoomIn', 'zoomOut', 'sheet', 'closeSheet',
+    'contourBtn', 'dockPassMinus', 'dockPassAuto', 'dockPassMode', 'dockPassPlus',
+    'boomChip', 'boomNum', 'offsetBtn', 'offsetPad', 'offsetEntry', 'offsetCancel', 'offsetDone', 'passChip', 'acreChip', 'map', 'rose', 'zoomIn', 'zoomOut', 'sheet', 'closeSheet',
     'deadband', 'deadbandRead', 'volume', 'volumeRead',
     'tallyToggle', 'sensorList', 'wakeState', 'clearLine', 'clearContour', 'newField', 'backBtn', 'toast',
     'confirm', 'confirmText', 'confirmNo', 'confirmYes'
@@ -2287,6 +2443,11 @@ function bind() {
     deferredInstall = null;
     els.installBtn.hidden = true;
   });
+  els.gpsPill.addEventListener('click', () => {
+    fillGpsCard();
+    if (!els.gpsCard.open) els.gpsCard.showModal();
+  });
+  els.gpsClose.addEventListener('click', () => els.gpsCard.close());
   els.compassBtn.addEventListener('click', () => {
     syncSheet();
     els.sheet.showModal();
@@ -2296,16 +2457,22 @@ function bind() {
   els.markB.addEventListener('click', markB);
   els.applyBtn.addEventListener('click', () => setApplying(!state.applying));
   els.contourBtn.addEventListener('click', toggleNext);
-  els.widthMinus.addEventListener('click', () => stepWidth(-1));
-  els.widthPlus.addEventListener('click', () => stepWidth(1));
-  els.widthInput.addEventListener('change', () => {
-    let value = Number(els.widthInput.value);
-    if (!Number.isFinite(value)) return paintWidth();
-    state.boomM = clamp(value, 4, 200) * FEET;
-    rebuildCoverage();
-    saveSettings();
-    paintWidth();
+  els.offsetBtn.addEventListener('click', openOffsetPad);
+  els.offsetPad.addEventListener('click', (event) => {
+    const digit = event.target.closest('[data-digit]');
+    if (digit) pushOffsetDigit(digit.dataset.digit);
+    else if (event.target.closest('[data-back]')) {
+      offsetDraft = offsetReplace ? '' : offsetDraft.slice(0, -1);
+      offsetReplace = false;
+      showOffsetDraft();
+    } else if (event.target.closest('[data-clear]')) {
+      offsetDraft = '';
+      offsetReplace = false;
+      showOffsetDraft();
+    }
   });
+  els.offsetCancel.addEventListener('click', () => els.offsetPad.close());
+  els.offsetDone.addEventListener('click', commitOffset);
   els.dockPassMinus.addEventListener('click', () => shiftPass(-1));
   els.dockPassPlus.addEventListener('click', () => shiftPass(1));
   els.dockPassAuto.addEventListener('click', setPassAuto);
