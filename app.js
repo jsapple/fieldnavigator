@@ -2177,7 +2177,7 @@ function updateReadout(guide) {
   } else if (steer == null) {
     setText(els.steerDir, 'NO HEADING');
   } else {
-    setText(els.steerDir, state.steerBand === 'on' ? 'CENTERED' : state.steerBand === 'right' ? 'STEER RIGHT' : 'STEER LEFT');
+    setText(els.steerDir, state.steerBand === 'on' ? 'CENTER' : state.steerBand === 'right' ? 'RIGHT' : 'LEFT');
   }
 
   if (state.mode === 'demo') {
@@ -2187,8 +2187,6 @@ function updateReadout(guide) {
     setText(els.speedRead, formatSpeed(state.fix && state.fix.speed));
     setText(els.headRead, state.heading == null ? '—' : `${Math.round(state.heading)}°`);
   }
-  setText(els.sourceRead, state.headingSource);
-  els.sourceRead.hidden = state.mode !== 'demo';
   paintGps();
   paintLightbar(guide);
   paintStatus(guide);
@@ -2469,7 +2467,7 @@ function bind() {
   const ids = [
     'splash', 'cab', 'startBtn', 'demoBtn', 'installBtn', 'installHint', 'offlineFlag',
     'gpsPill', 'gpsCard', 'gpsLat', 'gpsLon', 'gpsClose', 'compassBtn', 'steerDir', 'speedRead',
-    'headRead', 'sourceRead', 'lightbar', 'markA', 'markB', 'applyBtn',
+    'headRead', 'lightbar', 'markA', 'markB', 'applyBtn',
     'contourBtn', 'dockPassMinus', 'dockPassAuto', 'dockPassMode', 'dockPassPlus',
     'boomChip', 'boomNum', 'offsetBtn', 'offsetPad', 'offsetEntry', 'offsetCancel', 'offsetDone', 'passChip', 'acreChip', 'map', 'rose', 'zoomIn', 'zoomOut', 'sheet', 'closeSheet',
     'deadband', 'deadbandRead', 'volume', 'volumeRead',
