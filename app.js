@@ -398,11 +398,11 @@ function strokeSegment(x1, y1, x2, y2) {
   const inside = (point) => point.x > -80 && point.y > -80 && point.x < BUFFER + 80 && point.y < BUFFER + 80;
   if (!inside(start) && !inside(end)) return;
   const ctx = coverage.ctx;
-  ctx.lineCap = 'round';
+  ctx.lineCap = 'butt';
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(1, state.boomM);
-  ctx.strokeStyle = 'rgba(214, 255, 74, 0.42)';
-  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = 'rgba(47, 148, 58, 0.92)';
+  ctx.globalCompositeOperation = 'source-over';
   ctx.beginPath();
   ctx.moveTo(start.x, start.y);
   ctx.lineTo(end.x, end.y);
@@ -1869,7 +1869,7 @@ function drawGrid(ctx, pos, ppm) {
   const x0 = Math.floor((pos.x - range) / step) * step;
   const y0 = Math.floor((pos.y - range) / step) * step;
   ctx.beginPath();
-  ctx.strokeStyle = 'rgba(214, 255, 74, 0.08)';
+  ctx.strokeStyle = 'rgba(232, 228, 222, 0.07)';
   ctx.lineWidth = 1 / ppm;
   for (let x = x0; x <= pos.x + range; x += step) {
     ctx.moveTo(x, pos.y - range);
@@ -1912,7 +1912,7 @@ function drawPolyline(ctx, ppm, path, active) {
     if (index) ctx.lineTo(point.x, point.y);
     else ctx.moveTo(point.x, point.y);
   });
-  ctx.strokeStyle = active ? 'rgba(214, 255, 74, 0.95)' : 'rgba(168, 181, 150, 0.45)';
+  ctx.strokeStyle = active ? 'rgba(194, 59, 85, 0.96)' : 'rgba(61, 126, 224, 0.55)';
   ctx.lineWidth = (active ? 2.5 : 1.2) / ppm;
   ctx.stroke();
 }
@@ -1940,7 +1940,7 @@ function drawFaintLine(ctx, ppm, a, b) {
   ctx.beginPath();
   ctx.moveTo(a.x - frame.ux * 4000, a.y - frame.uy * 4000);
   ctx.lineTo(a.x + frame.ux * 4000, a.y + frame.uy * 4000);
-  ctx.strokeStyle = 'rgba(168, 181, 150, 0.28)';
+  ctx.strokeStyle = 'rgba(232, 228, 222, 0.55)';
   ctx.lineWidth = 1.2 / ppm;
   ctx.stroke();
 }
@@ -1960,6 +1960,12 @@ function drawContour(ctx, ppm, guide, points) {
   }
 }
 
+function swathColor(offset, pass) {
+  if (offset === 0) return 'rgba(194, 59, 85, 0.96)';
+  if (pass === 0) return 'rgba(232, 228, 222, 0.72)';
+  return Math.abs(offset) === 1 ? 'rgba(61, 126, 224, 0.8)' : 'rgba(61, 126, 224, 0.4)';
+}
+
 function drawSwaths(ctx, pos, ppm, guide) {
   if (!guide || guide.contour) return;
   const { frame } = guide;
@@ -1973,10 +1979,24 @@ function drawSwaths(ctx, pos, ppm, guide) {
     ctx.beginPath();
     ctx.moveTo(px - frame.ux * 4000, py - frame.uy * 4000);
     ctx.lineTo(px + frame.ux * 4000, py + frame.uy * 4000);
-    ctx.strokeStyle = offset === 0 ? 'rgba(214, 255, 74, 0.95)' : 'rgba(168, 181, 150, 0.45)';
+    ctx.strokeStyle = swathColor(offset, pass);
     ctx.lineWidth = (offset === 0 ? 2.5 : 1.2) / ppm;
     ctx.stroke();
   }
+}
+
+function iconScale() {
+  return els.map.width / Math.max(1, els.map.clientWidth || els.map.width);
+}
+
+function boomAnchor(pos, headingDeg, ppm) {
+  const heading = headingDeg * Math.PI / 180;
+  const back = 14 * iconScale() / ppm;
+  return {
+    x: pos.x - Math.sin(heading) * back,
+    y: pos.y - Math.cos(heading) * back,
+    heading
+  };
 }
 
 function drawBoom(ctx, pos, headingDeg, ppm) {
@@ -1985,19 +2005,24 @@ function drawBoom(ctx, pos, headingDeg, ppm) {
   const forwardY = Math.cos(heading);
   const leftX = -forwardY;
   const leftY = forwardX;
+  const scale = iconScale();
+  const back = 15 * scale / ppm;
+  const thick = 7 * scale / ppm;
   const half = state.boomM / 2;
+  const cx = pos.x - forwardX * back;
+  const cy = pos.y - forwardY * back;
+  const alongX = forwardX * (thick / 2);
+  const alongY = forwardY * (thick / 2);
+  const sideX = leftX * half;
+  const sideY = leftY * half;
   ctx.beginPath();
-  ctx.moveTo(pos.x + leftX * half, pos.y + leftY * half);
-  ctx.lineTo(pos.x - leftX * half, pos.y - leftY * half);
-  ctx.strokeStyle = state.applying ? 'rgba(214, 255, 74, 0.95)' : 'rgba(244, 247, 241, 0.7)';
-  ctx.lineWidth = 4 / ppm;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(pos.x, pos.y);
-  ctx.lineTo(pos.x + forwardX * 16, pos.y + forwardY * 16);
-  ctx.strokeStyle = 'rgba(244, 247, 241, 0.85)';
-  ctx.lineWidth = 2 / ppm;
-  ctx.stroke();
+  ctx.moveTo(cx + alongX + sideX, cy + alongY + sideY);
+  ctx.lineTo(cx + alongX - sideX, cy + alongY - sideY);
+  ctx.lineTo(cx - alongX - sideX, cy - alongY - sideY);
+  ctx.lineTo(cx - alongX + sideX, cy - alongY + sideY);
+  ctx.closePath();
+  ctx.fillStyle = state.applying ? '#3dce55' : '#8d948c';
+  ctx.fill();
 }
 
 function drawMarker(ctx, point, ppm, color) {
@@ -2005,6 +2030,41 @@ function drawMarker(ctx, point, ppm, color) {
   ctx.arc(point.x, point.y, 5 / ppm, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
+}
+
+function drawCoverage(ctx, pos, ppm) {
+  if (!coverage.canvas || !pos || !(ppm > 0)) return;
+  const canvas = els.map;
+  const anchor = screenAnchor();
+  const far = Math.hypot(
+    Math.max(anchor.cx, canvas.width - anchor.cx),
+    Math.max(anchor.cy, canvas.height - anchor.cy)
+  ) / ppm + state.boomM + 8;
+  const minX = pos.x - far;
+  const maxX = pos.x + far;
+  const minY = pos.y - far;
+  const maxY = pos.y + far;
+  const sx = BUFFER_CENTER + (minX - coverage.ox);
+  const sy = BUFFER_CENTER - (maxY - coverage.oy);
+  const x0 = Math.max(0, Math.floor(sx));
+  const y0 = Math.max(0, Math.floor(sy));
+  const x1 = Math.min(BUFFER, Math.ceil(sx + (maxX - minX)));
+  const y1 = Math.min(BUFFER, Math.ceil(sy + (maxY - minY)));
+  if (x1 - x0 < 1 || y1 - y0 < 1) return;
+  const worldW = x1 - x0;
+  const worldH = y1 - y0;
+  const place = boomAnchor(pos, currentHeading() || 0, ppm);
+  const worldX = coverage.ox + (x0 - BUFFER_CENTER) + (place.x - pos.x);
+  const northY = coverage.oy + (BUFFER_CENTER - y0) + (place.y - pos.y);
+  const southY = northY - worldH;
+  const midY = (northY + southY) / 2;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.translate(worldX, midY);
+  ctx.scale(1, -1);
+  ctx.translate(-worldX, -midY);
+  ctx.drawImage(coverage.canvas, x0, y0, worldW, worldH, worldX, southY, worldW, worldH);
+  ctx.restore();
 }
 
 function draw() {
@@ -2027,12 +2087,7 @@ function draw() {
   const headingDeg = heading == null ? 0 : heading;
   const ppm = applyWorldTransform(headingDeg, pos);
   recenterCoverage(pos);
-  if (coverage.canvas) {
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(coverage.canvas, coverage.ox - BUFFER_CENTER, coverage.oy + BUFFER_CENTER, BUFFER, -BUFFER);
-    ctx.restore();
-  }
+  drawCoverage(ctx, pos, ppm);
   drawGrid(ctx, pos, ppm);
   const guide = guidanceNow();
   const curve = activeCurve();
@@ -2044,21 +2099,23 @@ function draw() {
   if (state.guide === 'ab' && state.nextPoints.length >= 2) drawPolyline(ctx, ppm, state.nextPoints, false);
   if (state.guide !== 'saved' && contourReady()) drawPolyline(ctx, ppm, state.contourPoints, false);
   if (state.rowPoints.length >= 2) drawPolyline(ctx, ppm, state.rowPoints, true);
-  if (state.a) drawMarker(ctx, state.a, ppm, '#d6ff4a');
-  if (state.b) drawMarker(ctx, state.b, ppm, '#f4f7f1');
+  if (state.a) drawMarker(ctx, state.a, ppm, '#2f9a45');
+  if (state.b) drawMarker(ctx, state.b, ppm, '#d23b3b');
   drawBoom(ctx, pos, headingDeg, ppm);
 
   const anchor = screenAnchor();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.beginPath();
   const scale = width / Math.max(1, canvas.clientWidth || width);
-  ctx.moveTo(anchor.cx, anchor.cy - 15 * scale);
-  ctx.lineTo(anchor.cx + 11 * scale, anchor.cy + 12 * scale);
-  ctx.lineTo(anchor.cx, anchor.cy + 5 * scale);
-  ctx.lineTo(anchor.cx - 11 * scale, anchor.cy + 12 * scale);
+  ctx.beginPath();
+  ctx.moveTo(anchor.cx, anchor.cy - 16 * scale);
+  ctx.lineTo(anchor.cx + 10 * scale, anchor.cy + 8 * scale);
+  ctx.lineTo(anchor.cx - 10 * scale, anchor.cy + 8 * scale);
   ctx.closePath();
-  ctx.fillStyle = '#f4f7f1';
+  ctx.fillStyle = '#e6b325';
   ctx.fill();
+  ctx.lineWidth = Math.max(1, scale);
+  ctx.strokeStyle = '#3a2a08';
+  ctx.stroke();
   if (els.rose) els.rose.style.setProperty('--deg', `${-headingDeg}deg`);
 }
 

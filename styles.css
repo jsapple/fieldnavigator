@@ -12,8 +12,8 @@
   --paper: #f4f7f1;
   --paper-ink: #14210a;
   --north: #e23b32;
-  --left: #7cbcff;
-  --right: #ff8a55;
+  --left: #ff4a3c;
+  --right: #ff4a3c;
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
   font-family: "Arial Narrow", "Franklin Gothic Medium", "Segoe UI", sans-serif;
@@ -789,7 +789,23 @@ input[type="range"] { width: 100%; accent-color: var(--leaf); }
   }
 
   #splash { overflow-x: hidden; overflow-y: auto; }
-  #cab.app { overflow: hidden; }
+  #cab.app {
+    overflow: hidden;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top"
+      "cluster"
+      "lightbar"
+      "map"
+      "dock";
+  }
+
+  #cab.app .side {
+    display: contents;
+    border-right: 0;
+    overflow: visible;
+  }
 }
 
 @media (max-height: 700px) {
