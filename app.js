@@ -72,7 +72,7 @@ const state = {
 
 const demo = { x: 0, y: 0, heading: 0, speed: 3.15 };
 const gpsTrail = [];
-const coverage = { canvas: null, ctx: null };
+const coverage = { canvas: null, ctx: null, ox: 0, oy: 0 };
 const sensors = {
   watchId: null,
   orientationOn: false,
@@ -86,6 +86,7 @@ let wantWake = false;
 let audioCtx = null;
 let lastBeep = 0;
 let gpsRestartAt = 0;
+let courseSmooth = null;
 let wakeToken = 0;
 let rafId = 0;
 let lastFrame = 0;
@@ -371,7 +372,17 @@ function ensureBuffer() {
 }
 
 function bufferPoint(x, y) {
-  return { x: BUFFER_CENTER + x, y: BUFFER_CENTER - y };
+  return { x: BUFFER_CENTER + (x - coverage.ox), y: BUFFER_CENTER - (y - coverage.oy) };
+}
+
+function recenterCoverage(pos) {
+  if (!pos) return;
+  const dx = Math.abs(pos.x - coverage.ox);
+  const dy = Math.abs(pos.y - coverage.oy);
+  if (dx < BUFFER_CENTER - 220 && dy < BUFFER_CENTER - 220) return;
+  coverage.ox = pos.x;
+  coverage.oy = pos.y;
+  rebuildCoverage();
 }
 
 function strokeSegment(x1, y1, x2, y2) {
@@ -510,21 +521,50 @@ function smoothContour(points) {
   const spaced = [];
   points.forEach((point) => {
     const prev = spaced[spaced.length - 1];
-    if (!prev || Math.hypot(point.x - prev.x, point.y - prev.y) >= 1.5) spaced.push({ x: point.x, y: point.y });
+    if (!prev || Math.hypot(point.x - prev.x, point.y - prev.y) >= 4) spaced.push({ x: point.x, y: point.y });
   });
   const last = points[points.length - 1];
   const tail = spaced[spaced.length - 1];
-  if (last && tail && Math.hypot(last.x - tail.x, last.y - tail.y) > 0.4) spaced.push({ x: last.x, y: last.y });
+  if (last && tail && Math.hypot(last.x - tail.x, last.y - tail.y) > 1) spaced.push({ x: last.x, y: last.y });
   if (spaced.length < 3) return spaced;
-  const smoothed = [spaced[0]];
-  for (let i = 1; i < spaced.length - 1; i += 1) {
-    smoothed.push({
-      x: spaced[i - 1].x * 0.25 + spaced[i].x * 0.5 + spaced[i + 1].x * 0.25,
-      y: spaced[i - 1].y * 0.25 + spaced[i].y * 0.5 + spaced[i + 1].y * 0.25
-    });
+  let current = spaced;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = [current[0]];
+    for (let i = 1; i < current.length - 1; i += 1) {
+      next.push({
+        x: current[i - 1].x * 0.2 + current[i].x * 0.6 + current[i + 1].x * 0.2,
+        y: current[i - 1].y * 0.2 + current[i].y * 0.6 + current[i + 1].y * 0.2
+      });
+    }
+    next.push(current[current.length - 1]);
+    current = next;
   }
-  smoothed.push(spaced[spaced.length - 1]);
-  return smoothed;
+  return current;
+}
+
+function pathHeading(points, fromEnd, meters) {
+  if (!points || points.length < 2) return null;
+  const origin = fromEnd ? points[points.length - 1] : points[0];
+  let reached = origin;
+  let walked = 0;
+  if (fromEnd) {
+    for (let i = points.length - 1; i > 0; i -= 1) {
+      walked += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+      reached = points[i - 1];
+      if (walked >= meters) break;
+    }
+    const len = Math.hypot(origin.x - reached.x, origin.y - reached.y);
+    if (len < 1) return null;
+    return { x: origin.x, y: origin.y, ux: (origin.x - reached.x) / len, uy: (origin.y - reached.y) / len };
+  }
+  for (let i = 0; i < points.length - 1; i += 1) {
+    walked += Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
+    reached = points[i + 1];
+    if (walked >= meters) break;
+  }
+  const len = Math.hypot(reached.x - origin.x, reached.y - origin.y);
+  if (len < 1) return null;
+  return { x: origin.x, y: origin.y, ux: (reached.x - origin.x) / len, uy: (reached.y - origin.y) / len };
 }
 
 function closestOnPolyline(points, veh) {
@@ -560,16 +600,19 @@ function closestOnPolyline(points, veh) {
     const len2 = dx * dx + dy * dy;
     if (len2 < 1e-6) continue;
     const t = ((veh.x - start.x) * dx + (veh.y - start.y) * dy) / len2;
-    if (i > 0 && i < last) {
-      if (t >= 0 && t <= 1) consider(start, end, t);
-    } else if (points.length === 2) {
-      consider(start, end, t);
-    } else if (i === 0) {
-      consider(start, end, Math.min(t, 1));
-    } else {
-      consider(start, end, Math.max(t, 0));
-    }
+    if (t >= 0 && t <= 1) consider(start, end, t);
   }
+  const projectRay = (ray, sign) => {
+    if (!ray) return;
+    const along = ((veh.x - ray.x) * ray.ux + (veh.y - ray.y) * ray.uy) * sign;
+    if (along <= 0) return;
+    const px = ray.x + ray.ux * sign * along;
+    const py = ray.y + ray.uy * sign * along;
+    const end = { x: ray.x + ray.ux * sign, y: ray.y + ray.uy * sign };
+    consider(ray, end, along);
+  };
+  projectRay(pathHeading(points, false, 25), -1);
+  projectRay(pathHeading(points, true, 25), 1);
   return best;
 }
 
@@ -611,13 +654,16 @@ function sampleRow() {
   if (last) {
     const gap = Math.hypot(pos.x - last.x, pos.y - last.y);
     if (gap < 2) return;
-    if (gap > 20) {
-      finishRow(null);
-      state.rowPoints = [{ x: pos.x, y: pos.y }];
-      return;
-    }
+    if (gap > 30) {
+      state.rowHold = (state.rowHold || 0) + 1;
+      if (state.rowHold < 3) return;
+    } else state.rowHold = 0;
   }
   state.rowPoints.push({ x: pos.x, y: pos.y });
+  if (state.rowPoints.length > 2400) {
+    const thinned = smoothContour(state.rowPoints);
+    if (thinned.length >= 2) state.rowPoints = thinned;
+  }
 }
 
 function trimTurnTail(points) {
@@ -699,9 +745,14 @@ function watchTurn() {
     }
     return;
   }
-  turn.accum += angleDelta(turn.last, heading);
+  const step = angleDelta(turn.last, heading);
+  if (Math.abs(step) > 40) {
+    turn.last = heading;
+    return;
+  }
+  turn.accum += step;
   turn.last = heading;
-  if (Math.abs(dot) > 0.75 && Math.sign(dot) === -turn.sign && Math.abs(turn.accum) > 120) {
+  if (Math.abs(dot) > 0.75 && Math.sign(dot) === -turn.sign && Math.abs(turn.accum) > 150 && performance.now() - turn.since > 1800) {
     const right = turn.accum > 0;
     const guide = guidanceNow();
     const base = state.passLock == null && guide ? guide.pass : (state.passLock || 0);
@@ -958,7 +1009,14 @@ function onFix(position) {
   }
   if (!state.origin) state.origin = { lat: coords.latitude, lon: coords.longitude };
   const local = toLocal(coords.latitude, coords.longitude, state.origin);
+  const previous = state.stable ? { x: state.stable.x, y: state.stable.y } : null;
   const speed = coords.speed == null || coords.speed < 0 ? null : coords.speed;
+  let travel = speed;
+  if (travel == null && state.fix && state.stable && !interrupted) {
+    const step = Math.max(0.3, (timestamp - state.fix.ts) / 1000);
+    const derived = Math.hypot(local.x - state.stable.x, local.y - state.stable.y) / step;
+    if (derived >= 0.3 && derived < 12) travel = derived;
+  }
   if (interrupted) {
     state.stable = { x: local.x, y: local.y };
     state.lastPaint = null;
@@ -966,13 +1024,13 @@ function onFix(position) {
   } else if (state.stable && state.fix) {
     const dist = Math.hypot(local.x - state.stable.x, local.y - state.stable.y);
     const dt = Math.max(0.2, (timestamp - state.fix.ts) / 1000);
-    const limit = Math.max(12, (speed || 0) * dt * 4 + accuracy);
+    const limit = Math.max(12, (travel || 0) * dt * 4 + accuracy);
     if (dist > limit && dist > 8) {
       state.sensorGps = 'reject';
       return;
     }
   }
-  const moving = (speed != null && speed > 0.45) || performance.now() - state.accelTs < 1500;
+  const moving = (travel != null && travel > 0.45) || performance.now() - state.accelTs < 1500;
   const feet = shownFeet(accuracy);
   if (!state.stable) state.stable = { x: local.x, y: local.y };
   else if (moving || feet <= 40) absorbFix(local, feet, moving);
@@ -981,10 +1039,22 @@ function onFix(position) {
   while (gpsTrail.length && gpsTrail[0].ts < trailCutoff) gpsTrail.shift();
   if (gpsTrail.length > 12) gpsTrail.splice(0, gpsTrail.length - 12);
   state.rough = feet > 40;
+  let course = Number.isFinite(coords.heading) ? coords.heading : null;
+  if (course == null && previous && travel != null && travel > 0.8) {
+    const dx = local.x - previous.x;
+    const dy = local.y - previous.y;
+    if (Math.hypot(dx, dy) > 1) {
+      let bearing = Math.atan2(dx, dy) * 180 / Math.PI;
+      if (bearing < 0) bearing += 360;
+      course = bearing;
+    }
+  }
+  if (interrupted) courseSmooth = course;
+  else if (course != null) courseSmooth = courseSmooth == null ? course : lerpAngle(courseSmooth, course, (travel || 0) > 2 ? 0.4 : 0.18);
   state.fix = {
     acc: accuracy,
-    speed,
-    course: Number.isFinite(coords.heading) ? coords.heading : null,
+    speed: travel,
+    course: courseSmooth,
     ts: timestamp,
     localTs: performance.now(),
     held: !moving
@@ -994,8 +1064,8 @@ function onFix(position) {
 }
 
 function absorbFix(local, feet, moving) {
-  let crossGain = feet <= 20 ? 0.42 : feet <= 40 ? 0.16 : 0.05;
-  let alongGain = feet <= 20 ? 0.62 : feet <= 40 ? 0.36 : 0.12;
+  let crossGain = feet <= 8 ? 0.22 : feet <= 20 ? 0.14 : feet <= 40 ? 0.07 : 0.03;
+  let alongGain = feet <= 20 ? 0.72 : feet <= 40 ? 0.42 : 0.18;
   if (!moving) {
     crossGain *= 0.45;
     alongGain *= 0.45;
@@ -1018,14 +1088,20 @@ function absorbFix(local, feet, moving) {
 function coastPosition(dt) {
   if (state.mode !== 'live' || !state.stable || !state.fix || state.fix.held) return;
   const age = (performance.now() - state.fix.localTs) / 1000;
-  if (age < 0.05 || age > 2) return;
+  if (age < 0.05 || age > 6) return;
   const speed = state.fix.speed;
   const heading = state.heading;
   if (speed == null || speed < 0.6 || heading == null) return;
   const radians = heading * Math.PI / 180;
   const vx = Math.sin(radians) * speed;
   const vy = Math.cos(radians) * speed;
-  const frame = state.a && state.b ? lineFrame(state.a, state.b) : null;
+  let frame = null;
+  const curve = activeCurve();
+  if (curve) {
+    const hit = closestOnPolyline(curve, state.stable);
+    if (hit) frame = { ux: hit.ux, uy: hit.uy };
+  }
+  if (!frame && state.a && state.b) frame = lineFrame(state.a, state.b);
   if (frame) {
     const along = vx * frame.ux + vy * frame.uy;
     state.stable.x += frame.ux * along * dt;
@@ -1629,6 +1705,8 @@ function newField() {
   state.fix = null;
   state.lastPaint = null;
   gpsTrail.length = 0;
+  coverage.ox = 0;
+  coverage.oy = 0;
   rebuildCoverage();
   if (state.mode === 'demo') {
     demo.x = 0;
@@ -1736,39 +1814,42 @@ function drawPolyline(ctx, ppm, path, active) {
 
 function extendPath(points, distance) {
   if (points.length < 2) return points;
-  const a = points[0];
-  const b = points[1];
-  const c = points[points.length - 2];
-  const d = points[points.length - 1];
-  const len1 = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  const len2 = Math.hypot(d.x - c.x, d.y - c.y) || 1;
+  const head = pathHeading(points, false, 25);
+  const tail = pathHeading(points, true, 25);
+  if (!head || !tail) return points;
   return [
-    { x: a.x + (a.x - b.x) / len1 * distance, y: a.y + (a.y - b.y) / len1 * distance },
+    { x: head.x - head.ux * distance, y: head.y - head.uy * distance },
     ...points,
-    { x: d.x + (d.x - c.x) / len2 * distance, y: d.y + (d.y - c.y) / len2 * distance }
+    { x: tail.x + tail.ux * distance, y: tail.y + tail.uy * distance }
   ];
+}
+
+function visiblePassCount(ppm) {
+  const reach = Math.max(els.map.width, els.map.height) / Math.max(ppm, 0.01) / 2;
+  return clamp(Math.ceil(reach / Math.max(state.boomM, 1)) + 1, 4, 10);
 }
 
 function drawFaintLine(ctx, ppm, a, b) {
   const frame = lineFrame(a, b);
   if (!frame) return;
   ctx.beginPath();
-  ctx.moveTo(a.x - frame.ux * 1600, a.y - frame.uy * 1600);
-  ctx.lineTo(a.x + frame.ux * 1600, a.y + frame.uy * 1600);
+  ctx.moveTo(a.x - frame.ux * 4000, a.y - frame.uy * 4000);
+  ctx.lineTo(a.x + frame.ux * 4000, a.y + frame.uy * 4000);
   ctx.strokeStyle = 'rgba(168, 181, 150, 0.28)';
   ctx.lineWidth = 1.2 / ppm;
   ctx.stroke();
 }
 
 function drawContour(ctx, ppm, guide, points) {
-  const path = extendPath(points, 400);
+  const path = extendPath(points, 2000);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   if (!guide || !guide.contour) {
     drawPolyline(ctx, ppm, path, true);
     return;
   }
-  for (let offset = -4; offset <= 4; offset += 1) {
+  const count = visiblePassCount(ppm);
+  for (let offset = -count; offset <= count; offset += 1) {
     const lineOffset = (guide.pass + offset) * state.boomM + state.nudgeM;
     drawPolyline(ctx, ppm, offsetPolyline(path, lineOffset), offset === 0);
   }
@@ -1778,14 +1859,15 @@ function drawSwaths(ctx, pos, ppm, guide) {
   if (!guide || guide.contour) return;
   const { frame } = guide;
   ctx.lineCap = 'butt';
-  for (let offset = -4; offset <= 4; offset += 1) {
+  const count = visiblePassCount(ppm);
+  for (let offset = -count; offset <= count; offset += 1) {
     const pass = guide.pass + offset;
     const lineOffset = pass * state.boomM + state.nudgeM;
     const px = state.a.x + frame.lx * lineOffset;
     const py = state.a.y + frame.ly * lineOffset;
     ctx.beginPath();
-    ctx.moveTo(px - frame.ux * 1600, py - frame.uy * 1600);
-    ctx.lineTo(px + frame.ux * 1600, py + frame.uy * 1600);
+    ctx.moveTo(px - frame.ux * 4000, py - frame.uy * 4000);
+    ctx.lineTo(px + frame.ux * 4000, py + frame.uy * 4000);
     ctx.strokeStyle = offset === 0 ? 'rgba(214, 255, 74, 0.95)' : 'rgba(168, 181, 150, 0.45)';
     ctx.lineWidth = (offset === 0 ? 2.5 : 1.2) / ppm;
     ctx.stroke();
@@ -1839,17 +1921,12 @@ function draw() {
   const heading = currentHeading();
   const headingDeg = heading == null ? 0 : heading;
   const ppm = applyWorldTransform(headingDeg, pos);
-  if (state.segments.length) {
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(86, 176, 78, 0.55)';
-    ctx.lineWidth = state.boomM;
-    ctx.beginPath();
-    state.segments.forEach((segment) => {
-      ctx.moveTo(segment.x1, segment.y1);
-      ctx.lineTo(segment.x2, segment.y2);
-    });
-    ctx.stroke();
+  recenterCoverage(pos);
+  if (coverage.canvas) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(coverage.canvas, coverage.ox - BUFFER_CENTER, coverage.oy + BUFFER_CENTER, BUFFER, -BUFFER);
+    ctx.restore();
   }
   drawGrid(ctx, pos, ppm);
   const guide = guidanceNow();
@@ -1921,13 +1998,13 @@ function updateBand(steer) {
 function updateReadout(guide) {
   const steer = guide ? guide.steer : null;
   if (steer == null) state.steerView = 0;
-  else state.steerView += (steer - state.steerView) * 0.35;
+  else state.steerView += (steer - state.steerView) * 0.22;
   updateBand(steer);
   const recordingContour = contourRecording() && state.applying;
   document.body.dataset.steer = guide ? state.steerBand : 'none';
   const waiting = state.mode === 'live' && !vehicle();
   const idle = !recordingContour && !guide;
-  const gpsStale = state.mode === 'live' && (!state.fix || performance.now() - state.fix.localTs > 8000);
+  const gpsStale = state.mode === 'live' && (!state.fix || performance.now() - state.fix.localTs > 15000);
   els.steerDir.classList.toggle('prompt', (idle || recordingContour) && !waiting && !gpsStale);
   if (gpsStale || (waiting && !guide)) {
     setText(els.steerDir, 'WAITING FOR GPS');
@@ -2037,7 +2114,7 @@ function paintToggles() {
 function paintWidth() {
   if (document.activeElement !== els.widthInput) els.widthInput.value = String(boomFeet());
   setText(els.widthUnit, 'ft');
-  setText(els.boomChip, `${boomFeet()} ft`);
+  setText(els.boomNum, String(boomFeet()));
 }
 
 function paintWork() {
@@ -2145,7 +2222,7 @@ function loop(timestamp) {
     sampleRow();
     watchTurn();
     lockAPlus();
-    const gpsStale = state.mode === 'live' && (!state.fix || performance.now() - state.fix.localTs > 8000);
+    const gpsStale = state.mode === 'live' && (!state.fix || performance.now() - state.fix.localTs > 15000);
     const guide = gpsStale ? null : guidanceNow();
     serviceAudio(guide);
     maybePaint(vehicle());
@@ -2176,7 +2253,7 @@ function bind() {
     'gpsPill', 'compassBtn', 'steerDir', 'speedRead',
     'headRead', 'sourceRead', 'lightbar', 'markA', 'markB', 'applyBtn',
     'contourBtn', 'dockPassMinus', 'dockPassAuto', 'dockPassMode', 'dockPassPlus', 'widthMinus', 'widthPlus', 'widthInput', 'widthUnit',
-    'boomChip', 'passChip', 'acreChip', 'map', 'rose', 'zoomIn', 'zoomOut', 'sheet', 'closeSheet',
+    'boomChip', 'boomNum', 'passChip', 'acreChip', 'map', 'rose', 'zoomIn', 'zoomOut', 'sheet', 'closeSheet',
     'deadband', 'deadbandRead', 'volume', 'volumeRead',
     'tallyToggle', 'sensorList', 'wakeState', 'clearLine', 'clearContour', 'newField', 'backBtn', 'toast',
     'confirm', 'confirmText', 'confirmNo', 'confirmYes'

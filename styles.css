@@ -212,24 +212,36 @@ h1 {
   color: var(--paper);
 }
 
-.boom-label,
-.boom-read b {
-  font-size: inherit;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0;
-  white-space: nowrap;
-}
-
 .boom-label {
-  letter-spacing: 0.06em;
+  font-size: 0.38rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .boom-read b {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 1px;
+  max-width: 100%;
+  font-size: 1.18rem;
+  font-weight: 700;
+  line-height: 0.85;
+  letter-spacing: 0;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   color: var(--paper);
+}
+
+.boom-unit {
+  font-size: 0.5rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .pill.ok { background: #1c221c; color: var(--paper); }
